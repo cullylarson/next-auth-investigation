@@ -1,12 +1,16 @@
 import NextAuth from "next-auth";
 import Providers from "next-auth/providers";
-import {
-  CognitoUserPool,
-  AuthenticationDetails,
-  CognitoUser,
-  CognitoUserSession,
-  CognitoIdToken,
-} from "amazon-cognito-identity-js";
+import Amplify, { Auth } from "aws-amplify";
+
+type CognitoIdToken = {
+  payload: {
+    name: string;
+    email: string;
+    "cognito:username": string;
+    exp: number;
+    iat: number;
+  };
+};
 
 type AuthorizePayload = {
   idToken: CognitoIdToken;
@@ -20,25 +24,22 @@ async function loginCognitoUser({
 }: {
   username: string;
   password: string;
-}): Promise<CognitoUserSession> {
-  const userPool = new CognitoUserPool({
-    UserPoolId: process.env.COGNITO_USER_POOL_ID || "",
-    ClientId: process.env.COGNITO_CLIENT_ID || "",
+}): Promise<AuthorizePayload> {
+  // TODO: this should only be done once, on startup
+  Amplify.configure({
+    Auth: {
+      userPoolId: process.env.COGNITO_USER_POOL_ID,
+      userPoolWebClientId: process.env.COGNITO_CLIENT_ID,
+    },
   });
 
-  const user = new CognitoUser({ Username: username, Pool: userPool });
+  const user = await Auth.signIn(username, password);
 
-  const authenticationDetails = new AuthenticationDetails({
-    Username: username,
-    Password: password,
-  });
-
-  return new Promise((resolve, reject) =>
-    user.authenticateUser(authenticationDetails, {
-      onSuccess: (result) => resolve(result),
-      onFailure: (err) => reject(err),
-    })
-  );
+  return {
+    idToken: user.signInUserSession.getIdToken(),
+    accessToken: user.signInUserSession.getAccessToken().getJwtToken(),
+    refreshToken: user.signInUserSession.getRefreshToken().getToken(),
+  };
 }
 
 export default NextAuth({
@@ -50,12 +51,7 @@ export default NextAuth({
         password: string;
       }) => {
         try {
-          const result = await loginCognitoUser(credentials);
-          return {
-            idToken: result.getIdToken(),
-            accessToken: result.getAccessToken().getJwtToken(),
-            refreshToken: result.getRefreshToken().getToken(),
-          };
+          return loginCognitoUser(credentials);
         } catch (err) {
           console.log(err);
           return null;
