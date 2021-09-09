@@ -2,6 +2,14 @@ import NextAuth from "next-auth";
 import Providers from "next-auth/providers";
 import Amplify, { Auth } from "aws-amplify";
 
+// this should only be run once, on startup
+Amplify.configure({
+  Auth: {
+    userPoolId: process.env.COGNITO_USER_POOL_ID,
+    userPoolWebClientId: process.env.COGNITO_CLIENT_ID,
+  },
+});
+
 type CognitoIdToken = {
   payload: {
     name: string;
@@ -25,14 +33,6 @@ async function loginCognitoUser({
   username: string;
   password: string;
 }): Promise<AuthorizePayload> {
-  // TODO: this should only be done once, on startup
-  Amplify.configure({
-    Auth: {
-      userPoolId: process.env.COGNITO_USER_POOL_ID,
-      userPoolWebClientId: process.env.COGNITO_CLIENT_ID,
-    },
-  });
-
   const user = await Auth.signIn(username, password);
 
   return {
